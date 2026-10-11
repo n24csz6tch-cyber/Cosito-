@@ -1,285 +1,304 @@
---=============================================================
---  PUNCH SIMULATOR  |  MOBILE ALL-IN-ONE  (by Venice)
---  Prioridad: Auto-Reclamar UGC diario
---  Remotes confirmados de código abierto:
---    ReplicatedStorage.Events.DamageIncreaseOnClickEvent
---    ReplicatedStorage.Events.PlayerPressedKeyOnEgg
---    ReplicatedStorage.Events.PushEvent
---  Los demas se auto-detectan por nombre (anti-bug).
---=============================================================
+--=========================================================
+-- VENICE PUNCH SIMULATOR | MOBILE ALL-IN-ONE v2
+-- Prioridad: AUTO CLAIM UGC  |  Incluye DIAGNOSTICO
+--=========================================================
 
 local Players = game:GetService("Players")
 local RS      = game:GetService("ReplicatedStorage")
 local UIS     = game:GetService("UserInputService")
 local LP      = Players.LocalPlayer
 
-local Events = RS:WaitForChild("Events", 30)
-
--- Estado de funciones
-local S = {
-	autoPunch=false, autoHatch=false, autoUGC=false,
-	autoRebirth=false, autoChest=false, autoCoins=false,
-	autoDungeon=false, infJump=false, speed=16,
-}
-
---========================= HELPERS =========================
-local function safeRemote(name)
-	local r = Events and Events:FindFirstChild(name)
-	if r and r:IsA("RemoteEvent") then return r end
-	return nil
+local function notif(t)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification",
+            {Title="Venice Punch", Text=tostring(t), Duration=3})
+    end)
 end
 
--- Busca un remote por palabras clave en su nombre (anti-bug)
-local function fuzzyRemote(...)
-	if not Events then return nil end
-	local keys = {...}
-	for _, c in ipairs(Events:GetChildren()) do
-		if c:IsA("RemoteEvent") then
-			local n = string.lower(c.Name)
-			for _, k in ipairs(keys) do
-				if string.find(n, k, 1, true) then return c end
-			end
-		end
-	end
-	return nil
+--==================== INDICE DE REMOTES ====================
+local remotes = {}
+local function scanRemotes(obj)
+    for _, c in ipairs(obj:GetChildren()) do
+        if c:IsA("RemoteEvent") or c:IsA("RemoteFunction") then
+            remotes[c.Name:lower()] = c
+        end
+        if c:IsA("Folder") or c:IsA("Model") or c:IsA("Configuration") then
+            scanRemotes(c)
+        end
+    end
+end
+pcall(scanRemotes, RS)
+
+local function getRemote(...)
+    local names = {...}
+    for _, n in ipairs(names) do
+        local r = remotes[n:lower()]
+        if r then return r end
+    end
+    for _, n in ipairs(names) do
+        local key = n:lower()
+        for rn, r in pairs(remotes) do
+            if rn:find(key, 1, true) then return r end
+        end
+    end
+    return nil
 end
 
---========================= REMOTES =========================
-local rPunch   = safeRemote("DamageIncreaseOnClickEvent")
-local rEgg     = safeRemote("PlayerPressedKeyOnEgg")
-local rPush    = safeRemote("PushEvent")
-
-local rUGC     = fuzzyRemote("ugc","claim","gift","reward","daily")
-local rRebirth = fuzzyRemote("rebirth","ascend","prestige")
-local rChest   = fuzzyRemote("chest","hidden")
-local rCoins   = fuzzyRemote("coin","free")
-local rDungeon = fuzzyRemote("dungeon","start","enter")
-
---========================= CHARACTER =======================
-local char, hum, root
-local function bindChar(c)
-	char = c
-	hum  = c:WaitForChild("Humanoid")
-	root = c:WaitForChild("HumanoidRootPart")
-end
-if LP.Character then bindChar(LP.Character) end
-LP.CharacterAdded:Connect(bindChar)
-
---========================= LOOPS ===========================
--- Auto Punch
-task.spawn(function()
-	while true do
-		local dt = task.wait()
-		if S.autoPunch and rPunch then
-			pcall(function() rPunch:FireServer() end)
-		end
-	end
-end)
-
--- Auto Hatch (cicla teclas a-z al remote del huevo)
-task.spawn(function()
-	local keys = {}
-	for c in string.gmatch("abcdefghijklmnopqrstuvwxyz", ".") do keys[#keys+1] = c end
-	local i = 1
-	while true do
-		task.wait(0.1)
-		if S.autoHatch and rEgg then
-			pcall(function() rEgg:FireServer(keys[i]) end)
-			i = (i % #keys) + 1
-		end
-	end
-end)
-
--- Auto Claim UGC (lo mas importante)
-task.spawn(function()
-	while true do
-		task.wait(1)
-		if S.autoUGC and rUGC then
-			pcall(function() rUGC:FireServer() end)
-		end
-	end
-end)
-
--- Auto Rebirth / Chest / Coins / Dungeon
-task.spawn(function()
-	while true do
-		task.wait(1.5)
-		if S.autoRebirth and rRebirth then pcall(function() rRebirth:FireServer() end) end
-		if S.autoChest   and rChest   then pcall(function() rChest:FireServer() end)   end
-		if S.autoCoins   and rCoins   then pcall(function() rCoins:FireServer() end)   end
-		if S.autoDungeon and rDungeon then pcall(function() rDungeon:FireServer() end) end
-	end
-end)
-
--- Infinite Jump
-UIS.JumpRequest:Connect(function()
-	if S.infJump and hum then
-		hum:ChangeState(Enum.HumanoidStateType.Jumping)
-	end
-end)
-
--- WalkSpeed
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-		if hum and hum.WalkSpeed ~= S.speed then hum.WalkSpeed = S.speed end
-	end
-end)
-
---========================= GUI MOVIL =======================
-local function makeGUI()
-	local old = LP.PlayerGui:FindFirstChild("VenicePunch")
-	if old then old:Destroy() end
-
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "VenicePunch"
-	gui.ResetOnSpawn = false
-	gui.Parent = LP.PlayerGui
-
-	-- Boton flotante (abrir/cerrar)
-	local openBtn = Instance.new("TextButton")
-	openBtn.Size = UDim2.new(0,52,0,52)
-	openBtn.Position = UDim2.new(0,14,0.35,0)
-	openBtn.BackgroundColor3 = Color3.fromRGB(30,30,38)
-	openBtn.TextColor3 = Color3.fromRGB(255,255,255)
-	openBtn.Text = "PS"
-	openBtn.TextScaled = true
-	openBtn.Font = Enum.Font.GothamBold
-	openBtn.AutoButtonColor = true
-	openBtn.Parent = gui
-	Instance.new("UICorner", openBtn).CornerRadius = UDim.new(0,12)
-
-	-- Panel
-	local panel = Instance.new("Frame")
-	panel.Size = UDim2.new(0,210,0,330)
-	panel.Position = UDim2.new(0,74,0.3,0)
-	panel.BackgroundColor3 = Color3.fromRGB(22,22,28)
-	panel.BorderSizePixel = 0
-	panel.Visible = false
-	panel.Parent = gui
-	Instance.new("UICorner", panel).CornerRadius = UDim.new(0,12)
-
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1,0,0,34)
-	title.BackgroundColor3 = Color3.fromRGB(35,35,45)
-	title.TextColor3 = Color3.fromRGB(255,255,255)
-	title.Text = "Punch Simulator | Venice"
-	title.TextScaled = true
-	title.Font = Enum.Font.GothamBold
-	title.Parent = panel
-	Instance.new("UICorner", title).CornerRadius = UDim.new(0,12)
-
-	-- Drag del titulo
-	local dragging, dragStart, startPos
-	title.InputBegan:Connect(function(inp)
-		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-			dragStart = inp.Position
-			startPos = panel.Position
-		end
-	end)
-	UIS.InputChanged:Connect(function(inp)
-		if dragging and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
-			local d = inp.Position - dragStart
-			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-		end
-	end)
-	UIS.InputEnded:Connect(function(inp)
-		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-		end
-	end)
-
-	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(1,-14,1,-46)
-	list.Position = UDim2.new(0,7,0,40)
-	list.BackgroundTransparency = 1
-	list.BorderSizePixel = 0
-	list.ScrollBarThickness = 4
-	list.CanvasSize = UDim2.new(0,0,0,0)
-	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	list.Parent = panel
-
-	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0,6)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = list
-
-	local function addToggle(name, key, color)
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1,-6,0,34)
-		btn.BackgroundColor3 = Color3.fromRGB(45,45,55)
-		btn.TextColor3 = Color3.fromRGB(230,230,230)
-		btn.Text = name .. " : OFF"
-		btn.TextScaled = true
-		btn.Font = Enum.Font.Gotham
-		btn.Parent = list
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
-		btn.MouseButton1Click:Connect(function()
-			S[key] = not S[key]
-			if S[key] then
-				btn.BackgroundColor3 = color or Color3.fromRGB(0,150,90)
-				btn.Text = name .. " : ON"
-			else
-				btn.BackgroundColor3 = Color3.fromRGB(45,45,55)
-				btn.Text = name .. " : OFF"
-			end
-		end)
-		return btn
-	end
-
-	addToggle("Auto Punch",   "autoPunch",   Color3.fromRGB(0,150,90))
-	addToggle("Auto Hatch",   "autoHatch",   Color3.fromRGB(0,150,90))
-	addToggle("Auto Claim UGC","autoUGC",    Color3.fromRGB(200,120,0))
-	addToggle("Auto Rebirth", "autoRebirth", Color3.fromRGB(0,110,170))
-	addToggle("Auto Chest",   "autoChest",   Color3.fromRGB(0,110,170))
-	addToggle("Auto Coins",   "autoCoins",   Color3.fromRGB(0,110,170))
-	addToggle("Auto Dungeon", "autoDungeon", Color3.fromRGB(0,110,170))
-	addToggle("Infinite Jump","infJump",     Color3.fromRGB(120,0,150))
-
-	-- WalkSpeed
-	local spd = Instance.new("TextButton")
-	spd.Size = UDim2.new(1,-6,0,34)
-	spd.BackgroundColor3 = Color3.fromRGB(60,60,75)
-	spd.TextColor3 = Color3.fromRGB(255,255,255)
-	spd.Text = "WalkSpeed: 16  (toca)"
-	spd.TextScaled = true
-	spd.Font = Enum.Font.Gotham
-	spd.Parent = list
-	Instance.new("UICorner", spd).CornerRadius = UDim.new(0,8)
-	local speeds = {16,32,50,75,100,150}
-	local si = 1
-	spd.MouseButton1Click:Connect(function()
-		si = (si % #speeds) + 1
-		S.speed = speeds[si]
-		spd.Text = "WalkSpeed: " .. S.speed .. "  (toca)"
-	end)
-
-	-- Reclamar UGC ahora (manual, por si acaso)
-	local claimNow = Instance.new("TextButton")
-	claimNow.Size = UDim2.new(1,-6,0,34)
-	claimNow.BackgroundColor3 = Color3.fromRGB(200,120,0)
-	claimNow.TextColor3 = Color3.fromRGB(255,255,255)
-	claimNow.Text = "Reclamar UGC AHORA"
-	claimNow.TextScaled = true
-	claimNow.Font = Enum.Font.GothamBold
-	claimNow.Parent = list
-	Instance.new("UICorner", claimNow).CornerRadius = UDim.new(0,8)
-	claimNow.MouseButton1Click:Connect(function()
-		if rUGC then pcall(function() rUGC:FireServer() end) end
-	end)
-
-	-- Abrir/cerrar panel
-	openBtn.MouseButton1Click:Connect(function()
-		panel.Visible = not panel.Visible
-	end)
+local function fire(r, ...)
+    if not r then return end
+    if r:IsA("RemoteEvent") then r:FireServer(...)
+    else r:InvokeServer(...) end
 end
 
-makeGUI()
+local function getFullPath(obj)
+    local parts, o = {}, obj
+    while o and o ~= game do
+        table.insert(parts, 1, o.Name); o = o.Parent
+    end
+    return table.concat(parts, ".")
+end
 
--- Aviso en pantalla de que cargo
-game:GetService("StarterGui"):SetCore("SendNotification", {
-	Title = "Venice | Punch Simulator",
-	Text  = "Script cargado. Prioridad: Auto Claim UGC.",
-	Duration = 5,
-})
+--==================== REMOTES RESUELTOS ====================
+local dmg   = getRemote("DamageIncreaseOnClickEvent","DamageIncreaseOnClick","DamageIncrease","Damage")
+local egg   = getRemote("PlayerPressedKeyOnEgg","KeyOnEgg","Egg")
+local ugc   = getRemote("ClaimUGC","ClaimFreeUGC","ClaimUGCEvent","UGCEvent","GetUGC","ClaimGift","UGC")
+local reb   = getRemote("RebirthEvent","Rebirth")
+local coins = getRemote("ClaimCoins","ClaimFreeCoins","FreeCoins","CoinEvent","ClaimCoin")
+local chest = getRemote("HiddenChestEvent","ClaimHiddenChest","ChestEvent","HiddenChest","Chest")
+local dung  = getRemote("StartDungeonEvent","DungeonEvent","StartDungeon","Dungeon")
+
+local state = {punch=false, hatch=false, ugc=false, rebirth=false,
+               coins=false, chest=false, dungeon=false, infjump=false, speed=false}
+
+--==================== CLICK DE BOTONES UGC ====================
+local function clickClaim()
+    local pg = LP:FindFirstChild("PlayerGui")
+    if not pg then return end
+    for _, d in ipairs(pg:GetDescendants()) do
+        if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.Visible then
+            local s = ((d.Text or "").." "..d.Name):lower()
+            if s:find("claim",1,true) and
+              (s:find("ugc",1,true) or s:find("free",1,true) or s:find("gift",1,true) or s:find("reward",1,true)) then
+                pcall(function() d:Activate() end)
+            end
+        end
+    end
+end
+
+--==================== LOOPS ====================
+local letters = {}
+for i = 97, 122 do letters[#letters+1] = string.char(i) end
+
+task.spawn(function() -- PUNCH rapido (cada frame)
+    while true do
+        task.wait()
+        if state.punch then pcall(fire, dmg) end
+    end
+end)
+
+task.spawn(function() -- HATCH (todas las letras)
+    while true do
+        task.wait(0.15)
+        if state.hatch and egg then
+            for _, k in ipairs(letters) do pcall(fire, egg, k) end
+        end
+    end
+end)
+
+task.spawn(function() -- UGC
+    while true do
+        task.wait(0.5)
+        if state.ugc then
+            if ugc then pcall(fire, ugc) end
+            pcall(clickClaim)
+        end
+    end
+end)
+
+task.spawn(function() -- REBIRTH
+    while true do
+        task.wait(0.6)
+        if state.rebirth and reb then
+            local lvl = 1
+            pcall(function()
+                lvl = tonumber(LP.PlayerGui.RebirthShop.Frame.RebirthLevel.Text) or 1
+            end)
+            pcall(fire, reb, lvl)
+        end
+    end
+end)
+
+task.spawn(function() -- COINS
+    while true do
+        task.wait(0.3)
+        if state.coins and coins then pcall(fire, coins) end
+    end
+end)
+
+task.spawn(function() -- CHEST
+    while true do
+        task.wait(0.3)
+        if state.chest and chest then pcall(fire, chest) end
+    end
+end)
+
+task.spawn(function() -- DUNGEON
+    while true do
+        task.wait(0.5)
+        if state.dungeon and dung then pcall(fire, dung) end
+    end
+end)
+
+task.spawn(function() -- SPEED
+    while true do
+        task.wait(0.2)
+        if state.speed then
+            pcall(function()
+                local h = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+                if h then h.WalkSpeed = 120 end
+            end)
+        end
+    end
+end)
+
+UIS.JumpRequest:Connect(function() -- INF JUMP
+    if state.infjump then
+        local h = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+--==================== GUI ====================
+local gui = Instance.new("ScreenGui")
+gui.Name = "VenicePunch"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+pcall(function() gui.Parent = LP:WaitForChild("PlayerGui") end)
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0,190,0,300); main.Position = UDim2.new(0,15,0.2,0)
+main.BackgroundColor3 = Color3.fromRGB(18,18,24); main.BorderSizePixel = 0
+main.Active = true; main.Draggable = true; main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,10)
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1,0,0,34); header.BackgroundColor3 = Color3.fromRGB(30,30,42)
+header.BorderSizePixel = 0; header.Parent = main
+Instance.new("UICorner", header).CornerRadius = UDim.new(0,10)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,-40,1,0); title.Position = UDim2.new(0,10,0,0)
+title.BackgroundTransparency = 1; title.Text = "Venice Punch v2"
+title.TextColor3 = Color3.fromRGB(255,255,255); title.Font = Enum.Font.GothamBold
+title.TextSize = 14; title.TextXAlignment = Enum.TextXAlignment.Left; title.Parent = header
+
+local min = Instance.new("TextButton")
+min.Size = UDim2.new(0,26,0,26); min.Position = UDim2.new(1,-30,0,4)
+min.BackgroundColor3 = Color3.fromRGB(60,60,80); min.Text = "-"
+min.TextColor3 = Color3.new(1,1,1); min.Font = Enum.Font.GothamBold; min.Parent = header
+Instance.new("UICorner", min).CornerRadius = UDim.new(0,6)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1,-10,1,-44); scroll.Position = UDim2.new(0,5,0,39)
+scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 4; scroll.CanvasSize = UDim2.new(0,0,0,0)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; scroll.Parent = main
+local lay = Instance.new("UIListLayout")
+lay.Padding = UDim.new(0,6); lay.SortOrder = Enum.SortOrder.LayoutOrder; lay.Parent = scroll
+
+local function makeBtn(text, order)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1,-6,0,34); b.BackgroundColor3 = Color3.fromRGB(40,40,52)
+    b.BorderSizePixel = 0; b.Text = text; b.TextColor3 = Color3.fromRGB(225,225,235)
+    b.Font = Enum.Font.GothamMedium; b.TextSize = 13; b.LayoutOrder = order; b.Parent = scroll
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,7)
+    return b
+end
+
+local function addToggle(name, order, key)
+    local b = makeBtn(name..": OFF", order)
+    b.MouseButton1Click:Connect(function()
+        state[key] = not state[key]
+        if state[key] then
+            b.Text = name..": ON"; b.BackgroundColor3 = Color3.fromRGB(0,150,90)
+        else
+            b.Text = name..": OFF"; b.BackgroundColor3 = Color3.fromRGB(40,40,52)
+        end
+    end)
+end
+
+addToggle("Auto Punch", 1, "punch")
+addToggle("Auto Hatch (Fast Egg)", 2, "hatch")
+addToggle("Auto Claim UGC  *", 3, "ugc")
+addToggle("Auto Rebirth", 4, "rebirth")
+addToggle("Auto Claim Coins", 5, "coins")
+addToggle("Auto Hidden Chest", 6, "chest")
+addToggle("Auto Dungeon", 7, "dungeon")
+addToggle("Infinite Jump", 8, "infjump")
+addToggle("WalkSpeed 120", 9, "speed")
+
+local function showDiag()
+    pcall(scanRemotes, RS)
+    local list = {}
+    local function walk(o)
+        for _, c in ipairs(o:GetChildren()) do
+            if c:IsA("RemoteEvent") or c:IsA("RemoteFunction") then
+                table.insert(list, "["..c.ClassName.."] "..getFullPath(c))
+            end
+            if c:IsA("Folder") or c:IsA("Model") or c:IsA("Configuration") then walk(c) end
+        end
+    end
+    walk(RS)
+
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(0,300,0,400); f.Position = UDim2.new(0.5,-150,0.5,-200)
+    f.BackgroundColor3 = Color3.fromRGB(12,12,16); f.Parent = gui
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0,10)
+
+    local sf = Instance.new("ScrollingFrame")
+    sf.Size = UDim2.new(1,-16,1,-60); sf.Position = UDim2.new(0,8,0,48)
+    sf.BackgroundTransparency = 1; sf.ScrollBarThickness = 4
+    sf.CanvasSize = UDim2.new(0,0,0,#list*18+20); sf.Parent = f
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,-8,0,#list*18+20); lbl.Position = UDim2.new(0,4,0,0)
+    lbl.BackgroundTransparency = 1; lbl.Text = table.concat(list,"\n")
+    lbl.TextColor3 = Color3.fromRGB(180,255,200); lbl.Font = Enum.Font.Code
+    lbl.TextSize = 12; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextYAlignment = Enum.TextYAlignment.Top; lbl.Parent = sf
+
+    local h = Instance.new("TextLabel")
+    h.Size = UDim2.new(1,0,0,40); h.BackgroundTransparency = 1
+    h.Text = "DIAGNOSTICO ("..#list.." remotes)"; h.TextColor3 = Color3.new(1,1,1)
+    h.Font = Enum.Font.GothamBold; h.TextSize = 14; h.Parent = f
+
+    local cb = Instance.new("TextButton")
+    cb.Size = UDim2.new(1,-16,0,30); cb.Position = UDim2.new(0,8,1,-38)
+    cb.BackgroundColor3 = Color3.fromRGB(180,50,50); cb.Text = "CERRAR"
+    cb.TextColor3 = Color3.new(1,1,1); cb.Font = Enum.Font.GothamBold; cb.Parent = f
+    cb.MouseButton1Click:Connect(function() f:Destroy() end)
+end
+
+local diagBtn = makeBtn(">> DIAGNOSTICO (ver remotes)", 10)
+diagBtn.BackgroundColor3 = Color3.fromRGB(70,60,120)
+diagBtn.MouseButton1Click:Connect(showDiag)
+
+local reBtn = makeBtn(">> Re-escanear remotes", 11)
+reBtn.BackgroundColor3 = Color3.fromRGB(70,60,120)
+reBtn.MouseButton1Click:Connect(function()
+    remotes = {}
+    pcall(scanRemotes, RS)
+    dmg   = getRemote("DamageIncreaseOnClickEvent","DamageIncreaseOnClick","DamageIncrease","Damage")
+    egg   = getRemote("PlayerPressedKeyOnEgg","KeyOnEgg","Egg")
+    ugc   = getRemote("ClaimUGC","ClaimFreeUGC","ClaimUGCEvent","UGCEvent","GetUGC","ClaimGift","UGC")
+    reb   = getRemote("RebirthEvent","Rebirth")
+    coins = getRemote("ClaimCoins","ClaimFreeCoins","FreeCoins","CoinEvent","ClaimCoin")
+    chest = getRemote("HiddenChestEvent","ClaimHiddenChest","ChestEvent","HiddenChest","Chest")
+    dung  = getRemote("StartDungeonEvent","DungeonEvent","StartDungeon","Dungeon")
+    notif("Remotes re-escaneados")
+end)
+
+min.MouseButton1Click:Connect(function()
+    scroll.Visible = not scroll.Visible
+    main.Size = scroll.Visible and UDim2.new(0,190,0,300) or UDim2.new(0,190,0,34)
+end)
+
+notif("Venice Punch v2 cargado")
