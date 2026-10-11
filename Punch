@@ -1,0 +1,285 @@
+--=============================================================
+--  PUNCH SIMULATOR  |  MOBILE ALL-IN-ONE  (by Venice)
+--  Prioridad: Auto-Reclamar UGC diario
+--  Remotes confirmados de código abierto:
+--    ReplicatedStorage.Events.DamageIncreaseOnClickEvent
+--    ReplicatedStorage.Events.PlayerPressedKeyOnEgg
+--    ReplicatedStorage.Events.PushEvent
+--  Los demas se auto-detectan por nombre (anti-bug).
+--=============================================================
+
+local Players = game:GetService("Players")
+local RS      = game:GetService("ReplicatedStorage")
+local UIS     = game:GetService("UserInputService")
+local LP      = Players.LocalPlayer
+
+local Events = RS:WaitForChild("Events", 30)
+
+-- Estado de funciones
+local S = {
+	autoPunch=false, autoHatch=false, autoUGC=false,
+	autoRebirth=false, autoChest=false, autoCoins=false,
+	autoDungeon=false, infJump=false, speed=16,
+}
+
+--========================= HELPERS =========================
+local function safeRemote(name)
+	local r = Events and Events:FindFirstChild(name)
+	if r and r:IsA("RemoteEvent") then return r end
+	return nil
+end
+
+-- Busca un remote por palabras clave en su nombre (anti-bug)
+local function fuzzyRemote(...)
+	if not Events then return nil end
+	local keys = {...}
+	for _, c in ipairs(Events:GetChildren()) do
+		if c:IsA("RemoteEvent") then
+			local n = string.lower(c.Name)
+			for _, k in ipairs(keys) do
+				if string.find(n, k, 1, true) then return c end
+			end
+		end
+	end
+	return nil
+end
+
+--========================= REMOTES =========================
+local rPunch   = safeRemote("DamageIncreaseOnClickEvent")
+local rEgg     = safeRemote("PlayerPressedKeyOnEgg")
+local rPush    = safeRemote("PushEvent")
+
+local rUGC     = fuzzyRemote("ugc","claim","gift","reward","daily")
+local rRebirth = fuzzyRemote("rebirth","ascend","prestige")
+local rChest   = fuzzyRemote("chest","hidden")
+local rCoins   = fuzzyRemote("coin","free")
+local rDungeon = fuzzyRemote("dungeon","start","enter")
+
+--========================= CHARACTER =======================
+local char, hum, root
+local function bindChar(c)
+	char = c
+	hum  = c:WaitForChild("Humanoid")
+	root = c:WaitForChild("HumanoidRootPart")
+end
+if LP.Character then bindChar(LP.Character) end
+LP.CharacterAdded:Connect(bindChar)
+
+--========================= LOOPS ===========================
+-- Auto Punch
+task.spawn(function()
+	while true do
+		local dt = task.wait()
+		if S.autoPunch and rPunch then
+			pcall(function() rPunch:FireServer() end)
+		end
+	end
+end)
+
+-- Auto Hatch (cicla teclas a-z al remote del huevo)
+task.spawn(function()
+	local keys = {}
+	for c in string.gmatch("abcdefghijklmnopqrstuvwxyz", ".") do keys[#keys+1] = c end
+	local i = 1
+	while true do
+		task.wait(0.1)
+		if S.autoHatch and rEgg then
+			pcall(function() rEgg:FireServer(keys[i]) end)
+			i = (i % #keys) + 1
+		end
+	end
+end)
+
+-- Auto Claim UGC (lo mas importante)
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if S.autoUGC and rUGC then
+			pcall(function() rUGC:FireServer() end)
+		end
+	end
+end)
+
+-- Auto Rebirth / Chest / Coins / Dungeon
+task.spawn(function()
+	while true do
+		task.wait(1.5)
+		if S.autoRebirth and rRebirth then pcall(function() rRebirth:FireServer() end) end
+		if S.autoChest   and rChest   then pcall(function() rChest:FireServer() end)   end
+		if S.autoCoins   and rCoins   then pcall(function() rCoins:FireServer() end)   end
+		if S.autoDungeon and rDungeon then pcall(function() rDungeon:FireServer() end) end
+	end
+end)
+
+-- Infinite Jump
+UIS.JumpRequest:Connect(function()
+	if S.infJump and hum then
+		hum:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+-- WalkSpeed
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if hum and hum.WalkSpeed ~= S.speed then hum.WalkSpeed = S.speed end
+	end
+end)
+
+--========================= GUI MOVIL =======================
+local function makeGUI()
+	local old = LP.PlayerGui:FindFirstChild("VenicePunch")
+	if old then old:Destroy() end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "VenicePunch"
+	gui.ResetOnSpawn = false
+	gui.Parent = LP.PlayerGui
+
+	-- Boton flotante (abrir/cerrar)
+	local openBtn = Instance.new("TextButton")
+	openBtn.Size = UDim2.new(0,52,0,52)
+	openBtn.Position = UDim2.new(0,14,0.35,0)
+	openBtn.BackgroundColor3 = Color3.fromRGB(30,30,38)
+	openBtn.TextColor3 = Color3.fromRGB(255,255,255)
+	openBtn.Text = "PS"
+	openBtn.TextScaled = true
+	openBtn.Font = Enum.Font.GothamBold
+	openBtn.AutoButtonColor = true
+	openBtn.Parent = gui
+	Instance.new("UICorner", openBtn).CornerRadius = UDim.new(0,12)
+
+	-- Panel
+	local panel = Instance.new("Frame")
+	panel.Size = UDim2.new(0,210,0,330)
+	panel.Position = UDim2.new(0,74,0.3,0)
+	panel.BackgroundColor3 = Color3.fromRGB(22,22,28)
+	panel.BorderSizePixel = 0
+	panel.Visible = false
+	panel.Parent = gui
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0,12)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1,0,0,34)
+	title.BackgroundColor3 = Color3.fromRGB(35,35,45)
+	title.TextColor3 = Color3.fromRGB(255,255,255)
+	title.Text = "Punch Simulator | Venice"
+	title.TextScaled = true
+	title.Font = Enum.Font.GothamBold
+	title.Parent = panel
+	Instance.new("UICorner", title).CornerRadius = UDim.new(0,12)
+
+	-- Drag del titulo
+	local dragging, dragStart, startPos
+	title.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = inp.Position
+			startPos = panel.Position
+		end
+	end)
+	UIS.InputChanged:Connect(function(inp)
+		if dragging and (inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseMovement) then
+			local d = inp.Position - dragStart
+			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+	UIS.InputEnded:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.Touch or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	local list = Instance.new("ScrollingFrame")
+	list.Size = UDim2.new(1,-14,1,-46)
+	list.Position = UDim2.new(0,7,0,40)
+	list.BackgroundTransparency = 1
+	list.BorderSizePixel = 0
+	list.ScrollBarThickness = 4
+	list.CanvasSize = UDim2.new(0,0,0,0)
+	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	list.Parent = panel
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0,6)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = list
+
+	local function addToggle(name, key, color)
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1,-6,0,34)
+		btn.BackgroundColor3 = Color3.fromRGB(45,45,55)
+		btn.TextColor3 = Color3.fromRGB(230,230,230)
+		btn.Text = name .. " : OFF"
+		btn.TextScaled = true
+		btn.Font = Enum.Font.Gotham
+		btn.Parent = list
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
+		btn.MouseButton1Click:Connect(function()
+			S[key] = not S[key]
+			if S[key] then
+				btn.BackgroundColor3 = color or Color3.fromRGB(0,150,90)
+				btn.Text = name .. " : ON"
+			else
+				btn.BackgroundColor3 = Color3.fromRGB(45,45,55)
+				btn.Text = name .. " : OFF"
+			end
+		end)
+		return btn
+	end
+
+	addToggle("Auto Punch",   "autoPunch",   Color3.fromRGB(0,150,90))
+	addToggle("Auto Hatch",   "autoHatch",   Color3.fromRGB(0,150,90))
+	addToggle("Auto Claim UGC","autoUGC",    Color3.fromRGB(200,120,0))
+	addToggle("Auto Rebirth", "autoRebirth", Color3.fromRGB(0,110,170))
+	addToggle("Auto Chest",   "autoChest",   Color3.fromRGB(0,110,170))
+	addToggle("Auto Coins",   "autoCoins",   Color3.fromRGB(0,110,170))
+	addToggle("Auto Dungeon", "autoDungeon", Color3.fromRGB(0,110,170))
+	addToggle("Infinite Jump","infJump",     Color3.fromRGB(120,0,150))
+
+	-- WalkSpeed
+	local spd = Instance.new("TextButton")
+	spd.Size = UDim2.new(1,-6,0,34)
+	spd.BackgroundColor3 = Color3.fromRGB(60,60,75)
+	spd.TextColor3 = Color3.fromRGB(255,255,255)
+	spd.Text = "WalkSpeed: 16  (toca)"
+	spd.TextScaled = true
+	spd.Font = Enum.Font.Gotham
+	spd.Parent = list
+	Instance.new("UICorner", spd).CornerRadius = UDim.new(0,8)
+	local speeds = {16,32,50,75,100,150}
+	local si = 1
+	spd.MouseButton1Click:Connect(function()
+		si = (si % #speeds) + 1
+		S.speed = speeds[si]
+		spd.Text = "WalkSpeed: " .. S.speed .. "  (toca)"
+	end)
+
+	-- Reclamar UGC ahora (manual, por si acaso)
+	local claimNow = Instance.new("TextButton")
+	claimNow.Size = UDim2.new(1,-6,0,34)
+	claimNow.BackgroundColor3 = Color3.fromRGB(200,120,0)
+	claimNow.TextColor3 = Color3.fromRGB(255,255,255)
+	claimNow.Text = "Reclamar UGC AHORA"
+	claimNow.TextScaled = true
+	claimNow.Font = Enum.Font.GothamBold
+	claimNow.Parent = list
+	Instance.new("UICorner", claimNow).CornerRadius = UDim.new(0,8)
+	claimNow.MouseButton1Click:Connect(function()
+		if rUGC then pcall(function() rUGC:FireServer() end) end
+	end)
+
+	-- Abrir/cerrar panel
+	openBtn.MouseButton1Click:Connect(function()
+		panel.Visible = not panel.Visible
+	end)
+end
+
+makeGUI()
+
+-- Aviso en pantalla de que cargo
+game:GetService("StarterGui"):SetCore("SendNotification", {
+	Title = "Venice | Punch Simulator",
+	Text  = "Script cargado. Prioridad: Auto Claim UGC.",
+	Duration = 5,
+})
